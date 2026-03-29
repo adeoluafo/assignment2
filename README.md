@@ -42,6 +42,24 @@ pip install -r requirements.txt
 6. Connect your logic to the Streamlit UI in `app.py`.
 7. Refine UML so it matches what you actually built.
 
+## Features
+
+The final PawPal+ implementation includes:
+
+- **Pet and owner modeling**: classes for `Pet`, `Task`, `PetOwner`, and `Schedule` with clear responsibilities.
+
+- **Sorting by time**: `Schedule.sort_by_time()` orders all tasks chronologically across pets.
+
+- **Filtering**: `Schedule.filter_tasks()` supports filtering by `completion_status` and `pet_name`.
+
+- **Conflict warnings**: `Schedule.detect_time_conflicts()` flags tasks scheduled at the same time.
+
+- **Recurring tasks**: `Task.create_recurring_task()` (daily/weekly) combined with `Schedule.mark_task_complete()` to auto-append future tasks.
+
+- **Capacity tracking**: `Schedule.calculate_total_time()` and remaining time checks for daily availability.
+
+- **Streamlit UI integration**: real-time task entry, schedule generation, priority-based selection, metrics, and enhanced visual components (`st.success`, `st.warning`, `st.progress`, tabs).
+
 ## Testing PawPal+
 
 ### Running Tests
@@ -49,7 +67,7 @@ pip install -r requirements.txt
 Execute the test suite with:
 
 ```bash
-python -m pytest tests/test_pawpal.py -v
+python -m pytest
 ```
 
 ### Test Coverage
@@ -91,3 +109,7 @@ The test suite includes **20 comprehensive tests** covering three critical areas
 - ⚠️ Performance and scalability not yet benchmarked (100+ tasks)
 - ⚠️ Invalid input edge cases (malformed times, invalid priorities) need additional coverage
 
+
+##Demo
+
+<a href="assignment2/assignment2/pawpal.png" target="_blank"><img src='/course_images/ai110/.png' title='PawPal App' width='' alt='PawPal App' class='center-block' /></a>.

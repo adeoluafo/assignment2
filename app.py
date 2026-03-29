@@ -126,43 +126,162 @@ st.divider()
 st.subheader("Generate Schedule")
 st.caption("Build a daily schedule based on owner's available time and pet tasks.")
 
-if st.button("Generate schedule"):
+if st.button("📋 Generate Schedule", use_container_width=True):
     owner = st.session_state.owner
-    all_pet_tasks = []
+    schedule = Schedule(owner)
     
-    # Collect all tasks from all pets
-    for pet in owner.get_pets():
-        all_pet_tasks.extend(pet.get_tasks())
+    # Get all tasks from pets
+    all_pet_tasks = schedule.get_all_pet_tasks()
     
     if all_pet_tasks:
-        # Create a schedule and add tasks
-        schedule = Schedule(owner)
+        st.success("✅ Schedule generated successfully!")
         
-        # Sort tasks by priority (high first) and duration
-        priority_order = {"high": 0, "medium": 1, "low": 2}
-        sorted_tasks = sorted(all_pet_tasks, key=lambda t: (priority_order.get(t.priority, 3), t.duration))
-        
-        # Add tasks to schedule until we run out of time or tasks
-        for task in sorted_tasks:
-            if schedule.remaining_time >= task.duration:
-                schedule.add_task(task)
-        
-        # Display the schedule
-        st.success("Schedule generated!")
-        st.subheader("Your Daily Schedule")
-        schedule.display_schedule()
-        
-        # Show details
-        st.markdown("#### Schedule Details")
-        st.write(f"**Owner:** {owner.name}")
-        st.write(f"**Available Time:** {owner.available_time_per_day} minutes")
-        st.write(f"**Scheduled Tasks:** {len(schedule.tasks)}")
-        st.write(f"**Total Time Used:** {schedule.total_time_used} minutes")
-        st.write(f"**Remaining Time:** {schedule.remaining_time} minutes")
-        
-        if schedule.remaining_time > 0:
-            st.info(f"You have {schedule.remaining_time} minutes left in your day!")
+        # ============ CONFLICTS WARNING (PROMINENT) ============
+        conflicts = schedule.detect_time_conflicts()
+        if conflicts:
+            with st.container(border=True):
+                st.error("⚠️ **SCHEDULE CONFLICTS DETECTED**")
+                for conflict in conflicts:
+                    st.markdown(f"- {conflict}")
         else:
-            st.warning("Your schedule is fully booked!")
+            with st.container(border=True):
+                st.info("✅ **No time conflicts detected** — All tasks can run in parallel!")
+        
+        # ============ SUMMARY METRICS ============
+        st.markdown("### 📊 Schedule Summary")
+        col1, col2, col3, col4 = st.columns(4)
+        
+        total_time = sum(t.duration for t in all_pet_tasks)
+        pending = schedule.filter_tasks(completion_status="pending")
+        completed = schedule.filter_tasks(completion_status="completed")
+        
+        with col1:
+            st.metric("👤 Owner", owner.name)
+        with col2:
+            st.metric("📝 Total Tasks", len(all_pet_tasks))
+        with col3:
+            st.metric("⏱️ Total Duration", f"{total_time} min")
+        with col4:
+            st.metric("📅 Available Time", f"{owner.available_time_per_day} min")
+        
+        # ============ TIME CAPACITY INDICATOR ============
+        st.markdown("### ⏲️ Time Capacity")
+        capacity_percent = min(100, (total_time / owner.available_time_per_day) * 100)
+        st.progress(capacity_percent / 100.0)
+        
+        if total_time > owner.available_time_per_day:
+            st.error(
+                f"🚨 **Overbooked by {total_time - owner.available_time_per_day} minutes!** "
+                f"Tasks require {total_time} min but only {owner.available_time_per_day} available."
+            )
+        elif total_time == owner.available_time_per_day:
+            st.success("✨ **Perfect fit!** All tasks fit exactly in available time.")
+        else:
+            remaining = owner.available_time_per_day - total_time
+            st.success(f"✅ **{remaining} minutes of buffer time** available.")
+        
+        # ============ TABBED VIEWS ============
+        tab1, tab2, tab3 = st.tabs(["📋 Sorted Schedule", "🐾 By Pet", "📊 Status Breakdown"])
+        
+        # TAB 1: SORTED SCHEDULE
+        with tab1:
+            st.markdown("#### Daily Schedule (Sorted by Time)")
+            sorted_by_time = schedule.sort_by_time()
+            
+            if sorted_by_time:
+                schedule_df_data = []
+                for idx, task in enumerate(sorted_by_time, 1):
+                    schedule_df_data.append({
+                        "#": idx,
+                        "🕐 Time": task.time,
+                        "🐾 Pet": task.pet_name,
+                        "📋 Task": task.name,
+                        "⏱️ Duration": f"{task.duration} min",
+                        "⭐ Priority": task.priority.upper(),
+                        "🏷️ Category": task.category
+                    })
+                
+                st.dataframe(
+                    schedule_df_data, 
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "⭐ Priority": st.column_config.TextColumn(
+                            help="Task priority level"
+                        )
+                    }
+                )
+        
+        # TAB 2: BY PET
+        with tab2:
+            st.markdown("#### Tasks Grouped by Pet")
+            
+            for pet in owner.get_pets():
+                pet_tasks = schedule.filter_tasks(pet_name=pet.name)
+                
+                if pet_tasks:
+                    with st.expander(f"🐾 {pet.name} — {len(pet_tasks)} tasks", expanded=True):
+                        pet_table_data = []
+                        for task in sorted(pet_tasks, key=lambda t: t.time):
+                            pet_table_data.append({
+                                "🕐 Time": task.time,
+                                "📋 Task": task.name,
+                                "⏱️ Duration": f"{task.duration} min",
+                                "⭐ Priority": task.priority,
+                                "👁️ Status": task.completion_status
+                            })
+                        
+                        st.table(pet_table_data)
+                else:
+                    st.info(f"No tasks assigned to {pet.name}")
+        
+        # TAB 3: STATUS BREAKDOWN
+        with tab3:
+            st.markdown("#### Task Status Overview")
+            
+            col1, col2, col3 = st.columns(3)
+            in_progress = schedule.filter_tasks(completion_status="in_progress")
+            
+            with col1:
+                st.metric(
+                    "⏸️ Pending",
+                    len(pending),
+                    delta=f"{sum(t.duration for t in pending)} min"
+                )
+            with col2:
+                st.metric(
+                    "▶️ In Progress",
+                    len(in_progress),
+                    delta=f"{sum(t.duration for t in in_progress)} min"
+                )
+            with col3:
+                st.metric(
+                    "✅ Completed",
+                    len(completed),
+                    delta=f"{sum(t.duration for t in completed)} min"
+                )
+            
+            # Status breakdown table
+            if pending or in_progress or completed:
+                st.markdown("---")
+                st.markdown("##### Task Details by Status")
+                
+                status_data = []
+                for task in all_pet_tasks:
+                    status_emoji = {
+                        "pending": "⏸️",
+                        "in_progress": "▶️",
+                        "completed": "✅"
+                    }.get(task.completion_status, "❓")
+                    
+                    status_data.append({
+                        "Status": f"{status_emoji} {task.completion_status}",
+                        "📝 Task": task.name,
+                        "🐾 Pet": task.pet_name,
+                        "⏱️ Duration": f"{task.duration} min",
+                        "⭐ Priority": task.priority
+                    })
+                
+                st.dataframe(status_data, use_container_width=True, hide_index=True)
     else:
-        st.warning("No tasks found. Add tasks to pets first.")
+        st.warning("⚠️ No tasks found. Add tasks to pets first.")
